@@ -1,0 +1,889 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="theme-color" content="#0ea5e9">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="description" content="MarineMate - Inventory & Billing System">
+    <!-- <link rel="manifest" href="data:application/manifest+json,{}"> -->
+     <link rel="manifest" href="/manifest.json">
+    <title>MarineMate • Inventory & Billing</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=DM+Serif+Display&display=swap');
+
+        * { -webkit-tap-highlight-color: transparent; font-family: 'Inter', sans-serif; }
+
+        body { background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 50%, #f0f9ff 100%); min-height: 100vh; overflow-x: hidden; }
+
+        .glass { background: rgba(255,255,255,0.7); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.5); }
+        .transition-all-300 { transition: all 0.3s cubic-bezier(0.4,0,0.2,1); }
+
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+
+        .pb-safe { padding-bottom: max(80px, env(safe-area-inset-bottom)); }
+
+        /* FIX: body.modal-open no longer uses position:fixed (avoids scroll-top jump).
+           Instead we lock overflow only. JS saves/restores scrollY. */
+        body.modal-open { overflow: hidden; }
+
+        @keyframes slideUp   { from { transform:translateY(20px); opacity:0; } to { transform:translateY(0); opacity:1; } }
+        @keyframes fadeIn    { from { opacity:0; } to { opacity:1; } }
+        .animate-slide-up { animation: slideUp 0.4s ease-out forwards; }
+        .animate-fade-in  { animation: fadeIn  0.3s ease-out forwards; }
+
+        input, select, textarea, button { font-size: 16px !important; touch-action: manipulation; }
+
+        .toast {
+            position: fixed; top: 20px; left: 50%;
+            transform: translateX(-50%) translateY(-100px);
+            background: rgba(15,23,42,0.95); color: white;
+            padding: 12px 24px; border-radius: 50px; font-weight: 500;
+            z-index: 9999; opacity: 0;
+            transition: all 0.4s cubic-bezier(0.68,-0.55,0.265,1.55);
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+        }
+        .toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+        .toast.success { background: rgba(16,185,129,0.95); }
+        .toast.error   { background: rgba(239,68,68,0.95); }
+        .toast.warning { background: rgba(245,158,11,0.95); }
+
+        /* ── Mobile cart table: stack rows as cards ── */
+        @media (max-width: 480px) {
+            .cart-table thead { display: none; }
+            .cart-table tr {
+                display: flex; flex-wrap: wrap; align-items: center;
+                border: 1px solid #e2e8f0; border-radius: 12px;
+                margin-bottom: 8px; padding: 10px 12px; gap: 4px;
+            }
+            .cart-table td { border: none; padding: 2px 0 !important; }
+            .cart-table td:nth-child(1) { flex: 1 0 100%; font-weight: 600; font-size: 14px; }
+            .cart-table td:nth-child(2) { flex: 0 0 auto; }
+            .cart-table td:nth-child(3) { flex: 1; text-align: left !important; color: #64748b; font-size: 13px; }
+            .cart-table td:nth-child(3)::before { content: '@ '; }
+            .cart-table td:nth-child(4) { flex: 0 0 auto; font-weight: 700; color: #0ea5e9; }
+            .cart-table td:nth-child(5) { flex: 0 0 auto; }
+        }
+
+        /* ══════════════════════════════════════════════
+           PROFESSIONAL PRINT INVOICE
+           ══════════════════════════════════════════════ */
+        @media print {
+            body * { visibility: hidden !important; }
+            #printInvoiceContainer,
+            #printInvoiceContainer * { visibility: visible !important; }
+            #printInvoiceContainer {
+                position: fixed !important;
+                inset: 0 !important;
+                background: #fff !important;
+                z-index: 99999 !important;
+                overflow: auto !important;
+                padding: 0 !important;
+            }
+            @page { size: A4; margin: 0; }
+        }
+
+        /* Invoice styles (used both in modal preview & print) */
+        .inv-wrap {
+            font-family: 'Inter', sans-serif;
+            background: #fff;
+            color: #1e293b;
+            max-width: 760px;
+            margin: 0 auto;
+            padding: 40px 44px 36px;
+        }
+        .inv-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 36px;
+            padding-bottom: 28px;
+            border-bottom: 2px solid #0ea5e9;
+        }
+        .inv-logo-row { display: flex; align-items: center; gap: 14px; }
+        .inv-logo-icon {
+            width: 52px; height: 52px;
+            background: linear-gradient(135deg,#0ea5e9,#2563eb);
+            border-radius: 14px;
+            display: flex; align-items: center; justify-content: center;
+            color: #fff; font-size: 22px;
+        }
+        .inv-company-name {
+            font-size: 26px; font-weight: 800; letter-spacing: -0.5px;
+            color: #0f172a; line-height: 1;
+        }
+        .inv-company-sub { font-size: 12px; color: #64748b; margin-top: 4px; }
+        .inv-company-addr { font-size: 11px; color: #94a3b8; margin-top: 2px; }
+        .inv-meta-right { text-align: right; }
+        .inv-title-badge {
+            display: inline-block;
+            background: #0ea5e9;
+            color: #fff;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 2px;
+            padding: 4px 12px;
+            border-radius: 20px;
+            margin-bottom: 8px;
+        }
+        .inv-num { font-size: 22px; font-weight: 800; color: #0f172a; font-variant-numeric: tabular-nums; }
+        .inv-date { font-size: 12px; color: #64748b; margin-top: 4px; }
+
+        .inv-bill-row {
+            display: flex;
+            justify-content: space-between;
+            gap: 24px;
+            margin-bottom: 32px;
+        }
+        .inv-bill-box {
+            flex: 1;
+            background: #f8fafc;
+            border-radius: 12px;
+            padding: 16px 20px;
+        }
+        .inv-bill-box-label { font-size: 10px; font-weight: 700; letter-spacing: 1.5px; color: #94a3b8; text-transform: uppercase; margin-bottom: 6px; }
+        .inv-bill-box-val  { font-size: 15px; font-weight: 700; color: #0f172a; }
+
+        .inv-table { width: 100%; border-collapse: collapse; margin-bottom: 24px; }
+        .inv-table thead tr { background: #0f172a; }
+        .inv-table thead th {
+            padding: 11px 14px;
+            font-size: 11px; font-weight: 600; letter-spacing: 1px;
+            color: #94a3b8; text-align: left; text-transform: uppercase;
+        }
+        .inv-table thead th:last-child { text-align: right; }
+        .inv-table thead th:nth-child(2),
+        .inv-table thead th:nth-child(3) { text-align: center; }
+        .inv-table tbody tr { border-bottom: 1px solid #f1f5f9; }
+        .inv-table tbody tr:nth-child(even) { background: #f8fafc; }
+        .inv-table tbody td { padding: 12px 14px; font-size: 13px; }
+        .inv-table tbody td:nth-child(2) { text-align: center; }
+        .inv-table tbody td:nth-child(3) { text-align: center; color: #64748b; }
+        .inv-table tbody td:nth-child(4) { text-align: right; font-weight: 600; }
+
+        .inv-totals { margin-left: auto; width: 280px; }
+        .inv-totals-row { display: flex; justify-content: space-between; padding: 7px 0; font-size: 13px; }
+        .inv-totals-row.grand {
+            border-top: 2px solid #0f172a;
+            margin-top: 6px; padding-top: 12px;
+            font-size: 18px; font-weight: 800; color: #0f172a;
+        }
+        .inv-tax-note { font-size: 11px; color: #94a3b8; margin-top: 2px; }
+
+        .inv-footer {
+            margin-top: 40px;
+            padding-top: 20px;
+            border-top: 1px solid #e2e8f0;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+        }
+        .inv-footer-note { font-size: 12px; color: #64748b; }
+        .inv-footer-thank {
+            font-size: 18px;
+            font-weight: 700;
+            color: #0ea5e9;
+        }
+        .inv-gst-badge {
+            display: inline-flex; align-items: center; gap: 6px;
+            background: #eff6ff; border: 1px solid #bfdbfe;
+            border-radius: 6px; padding: 4px 10px;
+            font-size: 11px; color: #2563eb; font-weight: 600;
+            margin-top: 8px;
+        }
+
+        /* Stamp-style paid watermark (optional: used when printing) */
+        .inv-stamp {
+            position: absolute; top: 40%; right: 40px;
+            transform: rotate(-25deg);
+            border: 4px solid rgba(16,185,129,0.25);
+            color: rgba(16,185,129,0.25);
+            font-size: 36px; font-weight: 900;
+            letter-spacing: 4px; padding: 6px 18px;
+            border-radius: 8px; pointer-events: none;
+        }
+    </style>
+</head>
+<body class="antialiased text-slate-800">
+
+    <div id="toast" class="toast"></div>
+    <div id="printInvoiceContainer" style="display:none;"></div>
+
+    <!-- Header -->
+    <header class="fixed top-0 left-0 right-0 z-40 glass shadow-sm">
+        <div class="container mx-auto px-4 py-3 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 bg-gradient-to-br from-sky-500 to-blue-600 rounded-2xl flex items-center justify-center text-white text-xl shadow-lg">
+                    <i class="fas fa-anchor"></i>
+                </div>
+                <div>
+                    <h1 class="text-lg font-bold text-slate-800 leading-tight">MarineMate</h1>
+                    <p class="text-[10px] text-slate-500 font-medium">Inventory & Billing</p>
+                </div>
+            </div>
+            <div class="flex items-center gap-2">
+                <button onclick="showSettings()" class="w-10 h-10 rounded-full hover:bg-slate-100 flex items-center justify-center transition-colors">
+                    <i class="fas fa-cog text-slate-600"></i>
+                </button>
+                <button onclick="toggleMobileMenu()" class="sm:hidden w-10 h-10 rounded-full hover:bg-slate-100 flex items-center justify-center transition-colors">
+                    <i class="fas fa-bars text-slate-600 text-lg"></i>
+                </button>
+            </div>
+        </div>
+        <nav class="hidden sm:block container mx-auto px-4 border-t border-slate-200/50">
+            <div class="flex gap-1 py-1">
+                <button onclick="navigateTo(0)" id="tab-0" class="nav-tab flex-1 py-2.5 px-4 rounded-xl text-sm font-medium transition-all-300 text-sky-600 bg-sky-50"><i class="fas fa-chart-pie mr-2"></i>Dashboard</button>
+                <button onclick="navigateTo(1)" id="tab-1" class="nav-tab flex-1 py-2.5 px-4 rounded-xl text-sm font-medium text-slate-600"><i class="fas fa-box mr-2"></i>Inventory</button>
+                <button onclick="navigateTo(2)" id="tab-2" class="nav-tab flex-1 py-2.5 px-4 rounded-xl text-sm font-medium text-slate-600"><i class="fas fa-plus-circle mr-2"></i>New Bill</button>
+                <button onclick="navigateTo(3)" id="tab-3" class="nav-tab flex-1 py-2.5 px-4 rounded-xl text-sm font-medium text-slate-600"><i class="fas fa-file-invoice mr-2"></i>Bills</button>
+                <button onclick="navigateTo(4)" id="tab-4" class="nav-tab flex-1 py-2.5 px-4 rounded-xl text-sm font-medium text-slate-600"><i class="fas fa-chart-line mr-2"></i>Reports</button>
+            </div>
+        </nav>
+    </header>
+
+    <div class="h-[72px] sm:h-[120px]"></div>
+
+    <!-- Mobile Drawer -->
+    <div id="mobileMenu" class="fixed inset-0 z-50 hidden" onclick="if(event.target===this)toggleMobileMenu()">
+        <div class="absolute inset-0 bg-black/40 backdrop-blur-sm transition-opacity opacity-0" id="mobileMenuBackdrop"></div>
+        <div class="absolute right-0 top-0 bottom-0 w-[280px] bg-white shadow-2xl transform translate-x-full transition-transform duration-300 ease-out" id="mobileMenuPanel">
+            <div class="p-5 border-b border-slate-100 flex justify-between items-center">
+                <div class="flex items-center gap-3"><div class="w-10 h-10 bg-sky-500 rounded-xl flex items-center justify-center text-white"><i class="fas fa-anchor"></i></div><span class="font-bold">Menu</span></div>
+                <button onclick="toggleMobileMenu()" class="w-8 h-8 rounded-full hover:bg-slate-100 flex items-center justify-center"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="p-4 space-y-1">
+                <button onclick="navigateTo(0);toggleMobileMenu()" class="w-full flex items-center gap-4 p-4 rounded-xl hover:bg-slate-50"><i class="fas fa-chart-pie w-6 text-sky-500"></i><span>Dashboard</span></button>
+                <button onclick="navigateTo(1);toggleMobileMenu()" class="w-full flex items-center gap-4 p-4 rounded-xl hover:bg-slate-50"><i class="fas fa-box w-6 text-sky-500"></i><span>Inventory</span></button>
+                <button onclick="navigateTo(2);toggleMobileMenu()" class="w-full flex items-center gap-4 p-4 rounded-xl hover:bg-slate-50"><i class="fas fa-plus-circle w-6 text-sky-500"></i><span>New Bill</span></button>
+                <button onclick="navigateTo(3);toggleMobileMenu()" class="w-full flex items-center gap-4 p-4 rounded-xl hover:bg-slate-50"><i class="fas fa-file-invoice w-6 text-sky-500"></i><span>Bills History</span></button>
+                <button onclick="navigateTo(4);toggleMobileMenu()" class="w-full flex items-center gap-4 p-4 rounded-xl hover:bg-slate-50"><i class="fas fa-chart-line w-6 text-sky-500"></i><span>Reports</span></button>
+                <div class="border-t my-3"></div>
+                <button onclick="exportData();toggleMobileMenu()" class="w-full flex items-center gap-4 p-4 rounded-xl hover:bg-slate-50"><i class="fas fa-download w-6 text-emerald-500"></i><span>Export Data</span></button>
+                <button onclick="showSettings();toggleMobileMenu()" class="w-full flex items-center gap-4 p-4 rounded-xl hover:bg-slate-50"><i class="fas fa-cog w-6 text-slate-500"></i><span>Settings</span></button>
+            </div>
+        </div>
+    </div>
+
+    <main class="container mx-auto px-4 pb-safe max-w-6xl">
+
+        <!-- Dashboard -->
+        <div id="view-dashboard" class="view animate-fade-in">
+            <div class="mb-6"><h2 class="text-2xl font-bold">Welcome aboard! ⚓</h2><p class="text-slate-500 text-sm">Marine inventory overview</p></div>
+            <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                <div class="glass rounded-2xl p-4"><div class="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center text-blue-600 mb-3"><i class="fas fa-cubes"></i></div><p class="text-slate-500 text-xs">Total Parts</p><p id="statTotalParts" class="text-2xl font-bold mt-1">0</p></div>
+                <div class="glass rounded-2xl p-4"><div class="w-10 h-10 bg-emerald-100 rounded-xl flex items-center justify-center text-emerald-600 mb-3"><i class="fas fa-rupee-sign"></i></div><p class="text-slate-500 text-xs">Stock Value</p><p id="statStockValue" class="text-2xl font-bold mt-1">₹0</p></div>
+                <div class="glass rounded-2xl p-4"><div class="w-10 h-10 bg-amber-100 rounded-xl flex items-center justify-center text-amber-600 mb-3"><i class="fas fa-exclamation-triangle"></i></div><p class="text-slate-500 text-xs">Low Stock</p><p id="statLowStock" class="text-2xl font-bold text-amber-600 mt-1">0</p></div>
+                <div class="glass rounded-2xl p-4"><div class="w-10 h-10 bg-purple-100 rounded-xl flex items-center justify-center text-purple-600 mb-3"><i class="fas fa-receipt"></i></div><p class="text-slate-500 text-xs">Today's Bills</p><p id="statTodayBills" class="text-2xl font-bold mt-1">0</p></div>
+            </div>
+            <div class="grid lg:grid-cols-3 gap-6">
+                <div class="lg:col-span-2 glass rounded-2xl p-5">
+                    <div class="flex justify-between mb-4"><h3 class="font-bold"><i class="fas fa-clock-rotate-left text-sky-500 mr-2"></i>Recent Bills</h3><button onclick="navigateTo(3)" class="text-sm text-sky-600">View all →</button></div>
+                    <!-- FIX: overflow-x-auto wrapper so table scrolls on mobile instead of clipping -->
+                    <div class="overflow-x-auto">
+                        <table class="w-full min-w-[380px]"><thead><tr class="text-left text-xs text-slate-400"><th class="pb-3">Bill ID</th><th class="pb-3">Customer</th><th class="pb-3 hidden sm:table-cell">Date</th><th class="pb-3 text-right">Amount</th></tr></thead><tbody id="recentBillsList"></tbody></table>
+                    </div>
+                    <div id="emptyRecentBills" class="hidden text-center py-8 text-slate-400"><i class="fas fa-receipt text-4xl mb-2 opacity-30"></i><p>No bills yet</p></div>
+                </div>
+                <div class="glass rounded-2xl p-5"><h3 class="font-bold mb-4"><i class="fas fa-bell text-amber-500 mr-2"></i>Low Stock Alerts</h3><div id="lowStockList"></div><div id="emptyLowStock" class="hidden text-center py-8"><div class="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-3"><i class="fas fa-check text-emerald-500 text-2xl"></i></div><p class="text-emerald-600">All stocks healthy!</p></div></div>
+            </div>
+        </div>
+
+        <!-- Inventory -->
+        <div id="view-inventory" class="view hidden animate-fade-in">
+            <div class="flex flex-col sm:flex-row justify-between items-start gap-4 mb-6">
+                <div><h2 class="text-2xl font-bold">Inventory</h2><p class="text-slate-500 text-sm">Manage marine parts</p></div>
+                <button onclick="showAddItemModal()" class="w-full sm:w-auto bg-gradient-to-r from-sky-500 to-blue-600 text-white px-6 py-3 rounded-xl font-medium shadow-lg flex items-center justify-center gap-2"><i class="fas fa-plus"></i>Add New Part</button>
+            </div>
+            <div class="glass rounded-2xl p-4 mb-6">
+                <div class="flex flex-col sm:flex-row gap-3">
+                    <div class="relative flex-1"><i class="fas fa-search absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"></i><input id="searchInventory" type="text" placeholder="Search parts..." onkeyup="filterInventory()" class="w-full pl-11 pr-4 py-3 bg-white border rounded-xl focus:ring-2 focus:ring-sky-500/20"></div>
+                    <select id="categoryFilter" onchange="filterInventory()" class="w-full sm:w-48 px-4 py-3 bg-white border rounded-xl"><option value="">All Categories</option><option>Engine</option><option>Electrical</option><option>Hull</option><option>Safety</option><option>Navigation</option><option>Plumbing</option><option>Coating</option></select>
+                </div>
+            </div>
+            <!-- FIX: overflow-x-auto wrapper for inventory table on mobile -->
+            <div class="glass rounded-2xl overflow-hidden">
+                <div class="overflow-x-auto">
+                    <table class="w-full min-w-[520px]">
+                        <thead class="bg-slate-50/50"><tr class="text-left text-xs text-slate-500"><th class="pl-6 py-4">Part Details</th><th class="py-4">Category</th><th class="py-4 text-center">Stock</th><th class="py-4 text-right">Price</th><th class="pr-6 py-4 text-right">Actions</th></tr></thead>
+                        <tbody id="inventoryList"></tbody>
+                    </table>
+                </div>
+                <div id="emptyInventory" class="hidden text-center py-12"><i class="fas fa-box-open text-slate-300 text-3xl"></i><p class="text-slate-500 mt-2">No parts found</p></div>
+            </div>
+        </div>
+
+        <!-- New Bill -->
+        <div id="view-bill" class="view hidden animate-fade-in">
+            <h2 class="text-2xl font-bold mb-6">Create New Bill</h2>
+            <div class="grid lg:grid-cols-3 gap-6">
+                <div class="lg:col-span-2 space-y-6">
+                    <div class="glass rounded-2xl p-5"><label class="block text-sm font-medium mb-2">Customer / Boat Name *</label><input id="billCustomer" type="text" placeholder="e.g., MV Ocean Queen" class="w-full px-4 py-3 bg-white border rounded-xl"></div>
+                    <div class="glass rounded-2xl p-5">
+                        <label class="block text-sm font-medium mb-2">Add Items</label>
+                        <div class="relative"><input id="itemSearch" type="text" placeholder="Type to search parts..." onkeyup="searchItemsForBill(event)" class="w-full pl-4 pr-12 py-3 bg-white border rounded-xl"><button onclick="addSelectedItemToBill()" class="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 bg-sky-500 text-white rounded-lg"><i class="fas fa-plus text-sm"></i></button></div>
+                        <div id="suggestedItems" class="flex flex-wrap gap-2 mt-3"></div>
+                    </div>
+                    <div class="glass rounded-2xl p-5">
+                        <h3 class="font-semibold mb-4">Bill Items</h3>
+                        <!-- FIX: cart-table class enables mobile card view via CSS, overflow-x-auto for larger sizes -->
+                        <div class="overflow-x-auto">
+                            <table class="w-full cart-table">
+                                <thead><tr class="text-left text-xs text-slate-400 border-b"><th class="pb-3">Item</th><th class="pb-3 text-center">Qty</th><th class="pb-3 text-right">Price</th><th class="pb-3 text-right">Total</th><th></th></tr></thead>
+                                <tbody id="cartItems"></tbody>
+                            </table>
+                        </div>
+                        <div id="emptyCart" class="text-center py-8 text-slate-400"><i class="fas fa-shopping-cart text-4xl mb-2 opacity-30"></i><p>No items added</p></div>
+                    </div>
+                    <div class="glass rounded-2xl p-5 flex flex-col sm:flex-row justify-between items-center gap-4">
+                        <div><p class="text-sm text-slate-500">Grand Total <span class="text-xs text-slate-400">(incl. GST 18%)</span></p><p id="billTotal" class="text-3xl font-bold">₹0</p></div>
+                        <div class="flex gap-3 w-full sm:w-auto">
+                            <button onclick="clearBill()" class="flex-1 px-6 py-3 border rounded-xl text-slate-600 hover:bg-slate-50"><i class="fas fa-trash-alt mr-2"></i>Clear</button>
+                            <button onclick="saveBill()" class="flex-1 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white px-8 py-3 rounded-xl font-semibold shadow-lg"><i class="fas fa-save mr-2"></i>Save & Print</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="space-y-6">
+                    <div class="bg-gradient-to-br from-sky-500 to-blue-600 rounded-2xl p-6 text-white shadow-lg"><div class="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center mb-4"><i class="fas fa-bolt text-2xl"></i></div><h3 class="font-bold text-lg">Quick Billing</h3><p class="text-sm text-white/80 mt-2">Stock deducts automatically. Works offline.</p></div>
+                    <div class="glass rounded-2xl p-5"><h3 class="font-semibold mb-3"><i class="fas fa-exclamation-circle text-amber-500 mr-2"></i>Stock Alerts</h3><div id="lowStockSidebar" class="space-y-2 text-sm"></div></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Bills History -->
+        <div id="view-bills" class="view hidden animate-fade-in">
+            <div class="flex justify-between items-center mb-6">
+                <div><h2 class="text-2xl font-bold">Bill History</h2><p class="text-slate-500 text-sm" id="billsCount">0 invoices</p></div>
+                <button onclick="exportData()" class="px-4 py-2 border rounded-xl text-slate-600 hover:bg-slate-50"><i class="fas fa-download mr-2"></i>Export</button>
+            </div>
+            <!-- FIX: overflow-x-auto wrapper for bills table on mobile -->
+            <div class="glass rounded-2xl overflow-hidden">
+                <div class="overflow-x-auto">
+                    <table class="w-full min-w-[420px]">
+                        <thead class="bg-slate-50/50"><tr class="text-left text-xs text-slate-500"><th class="pl-6 py-4">Invoice #</th><th class="py-4">Customer</th><th class="py-4 hidden sm:table-cell">Date</th><th class="pr-6 py-4 text-right">Total</th></tr></thead>
+                        <tbody id="billsList"></tbody>
+                    </table>
+                </div>
+                <div id="emptyBills" class="hidden text-center py-12"><i class="fas fa-file-invoice text-slate-300 text-3xl"></i><p class="text-slate-500 mt-2">No invoices yet</p></div>
+            </div>
+        </div>
+
+        <!-- Reports -->
+        <div id="view-reports" class="view hidden animate-fade-in">
+            <h2 class="text-2xl font-bold mb-6">Analytics & Reports</h2>
+            <div class="grid md:grid-cols-2 gap-6">
+                <div class="glass rounded-2xl p-6"><h3 class="font-bold mb-4"><i class="fas fa-trophy text-amber-500 mr-2"></i>Top Selling Parts</h3><div id="topSellingList"></div><div id="emptyTopSelling" class="hidden text-center py-8 text-slate-400"><i class="fas fa-chart-bar text-4xl mb-2 opacity-30"></i><p>No sales data</p></div></div>
+                <div class="glass rounded-2xl p-6"><h3 class="font-bold mb-4"><i class="fas fa-chart-pie text-sky-500 mr-2"></i>Stock by Category</h3><div id="categoryValueGrid" class="space-y-3"></div></div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Mobile Bottom Nav -->
+    <nav class="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-xl border-t flex justify-around py-2 px-2 sm:hidden z-40 pb-safe">
+        <button onclick="navigateTo(0)" id="mobileTab0" class="nav-btn flex flex-col items-center py-2 text-sky-600"><i class="fas fa-chart-pie text-xl mb-1"></i><span class="text-[10px]">Home</span></button>
+        <button onclick="navigateTo(1)" id="mobileTab1" class="nav-btn flex flex-col items-center py-2 text-slate-400"><i class="fas fa-box text-xl mb-1"></i><span class="text-[10px]">Stock</span></button>
+        <button onclick="navigateTo(2)" id="mobileTab2" class="nav-btn flex flex-col items-center py-2 text-slate-400"><div class="w-12 h-12 bg-gradient-to-r from-sky-500 to-blue-600 rounded-full flex items-center justify-center text-white shadow-lg -mt-6 border-4 border-white"><i class="fas fa-plus text-lg"></i></div><span class="text-[10px] mt-1">New Bill</span></button>
+        <button onclick="navigateTo(3)" id="mobileTab3" class="nav-btn flex flex-col items-center py-2 text-slate-400"><i class="fas fa-file-invoice text-xl mb-1"></i><span class="text-[10px]">Bills</span></button>
+        <button onclick="navigateTo(4)" id="mobileTab4" class="nav-btn flex flex-col items-center py-2 text-slate-400"><i class="fas fa-chart-line text-xl mb-1"></i><span class="text-[10px]">Reports</span></button>
+    </nav>
+
+    <!-- Item Modal (bottom sheet) -->
+    <div id="itemModal" class="fixed inset-0 z-50 hidden items-end sm:items-center justify-center p-0 sm:p-4" onclick="if(event.target===this)closeItemModal()">
+        <div class="absolute inset-0 bg-black/40 backdrop-blur-sm opacity-0 transition-opacity duration-300" id="itemModalBackdrop"></div>
+        <div class="relative bg-white w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl p-6 transform translate-y-full transition-transform duration-300" id="itemModalPanel">
+            <div class="flex justify-between items-center mb-6"><h3 id="modalTitle" class="text-xl font-bold">Add Part</h3><button onclick="closeItemModal()" class="w-8 h-8 rounded-full bg-slate-100"><i class="fas fa-times"></i></button></div>
+            <form onsubmit="event.preventDefault();saveItem();" class="space-y-4">
+                <div><label class="block text-sm font-medium mb-1">Part Name *</label><input id="itemName" type="text" required class="w-full px-4 py-3 bg-slate-50 border rounded-xl"></div>
+                <div><label class="block text-sm font-medium mb-1">Category</label><select id="itemCategory" class="w-full px-4 py-3 bg-slate-50 border rounded-xl"><option>Engine</option><option>Electrical</option><option>Hull</option><option>Safety</option><option>Navigation</option><option>Plumbing</option><option>Coating</option></select></div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div><label class="block text-sm font-medium mb-1">Price (₹)</label><input id="itemPrice" type="number" step="0.01" required class="w-full px-4 py-3 bg-slate-50 border rounded-xl"></div>
+                    <div><label class="block text-sm font-medium mb-1">Stock Qty</label><input id="itemQuantity" type="number" required class="w-full px-4 py-3 bg-slate-50 border rounded-xl"></div>
+                </div>
+                <div><label class="block text-sm font-medium mb-1">Unit</label><select id="itemUnit" class="w-full px-4 py-3 bg-slate-50 border rounded-xl"><option value="pcs">Pieces</option><option value="liters">Liters</option><option value="meters">Meters</option><option value="sets">Sets</option></select></div>
+                <div class="flex gap-3 pt-4"><button type="button" onclick="closeItemModal()" class="flex-1 py-3 border rounded-xl">Cancel</button><button type="submit" class="flex-1 bg-sky-600 text-white py-3 rounded-xl font-semibold">Save</button></div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Bill Detail Modal (bottom sheet) -->
+    <div id="billDetailModal" class="fixed inset-0 z-50 hidden items-end sm:items-center justify-center p-0 sm:p-4" onclick="if(event.target===this)closeBillDetail()">
+        <div class="absolute inset-0 bg-black/40 backdrop-blur-sm opacity-0 transition-opacity duration-300" id="billDetailBackdrop"></div>
+        <!-- FIX: added translate-y-full so the open/close animation actually works -->
+        <div class="relative bg-white w-full sm:max-w-2xl rounded-t-3xl sm:rounded-3xl max-h-[92vh] overflow-hidden flex flex-col transform translate-y-full transition-transform duration-300" id="billDetailModalPanel">
+            <div class="p-4 border-b flex justify-between items-center flex-shrink-0">
+                <h3 class="font-bold">Invoice Details</h3>
+                <div>
+                    <button onclick="printInvoice()" class="px-4 py-2 bg-slate-800 text-white rounded-lg mr-2 text-sm"><i class="fas fa-print mr-1"></i>Print</button>
+                    <button onclick="closeBillDetail()" class="w-10 h-10 rounded-full bg-slate-100"><i class="fas fa-times"></i></button>
+                </div>
+            </div>
+            <div id="billDetailContent" class="flex-1 overflow-y-auto bg-slate-50"></div>
+        </div>
+    </div>
+
+    <!-- Settings Modal (center) -->
+    <!-- FIX: added id="settingsModalPanel" so openModal/closeModal can find and animate it -->
+    <div id="settingsModal" class="fixed inset-0 z-50 hidden items-center justify-center p-4" onclick="if(event.target===this)closeSettings()">
+        <div class="absolute inset-0 bg-black/40 backdrop-blur-sm opacity-0 transition-opacity duration-300" id="settingsBackdrop"></div>
+        <div id="settingsModalPanel" class="relative bg-white w-full max-w-md rounded-3xl p-6 transform scale-95 opacity-0 transition-all duration-300">
+            <div class="flex justify-between items-center mb-6"><h3 class="text-xl font-bold">Settings</h3><button onclick="closeSettings()" class="w-8 h-8 rounded-full bg-slate-100"><i class="fas fa-times"></i></button></div>
+            <div class="border-t pt-4"><p class="text-sm text-slate-500 mb-4">Danger Zone</p><button onclick="resetAllData()" class="w-full p-4 border border-red-200 rounded-xl text-red-600 font-medium hover:bg-red-50"><i class="fas fa-trash-alt mr-2"></i>Reset All Data</button></div>
+        </div>
+    </div>
+
+<script>
+    let inventory=[], bills=[], currentEditId=null, cart=[], currentBillId=null;
+    const LOW_STOCK_THRESHOLD=8;
+    const sampleInventory=[
+        {id:1,name:"15\" Bronze Propeller",category:"Engine",quantity:12,unitPrice:12999,unit:"pcs"},
+        {id:2,name:"Bilge Pump 12V",category:"Plumbing",quantity:28,unitPrice:3499,unit:"pcs"},
+        {id:3,name:"Life Jacket Auto",category:"Safety",quantity:45,unitPrice:2299,unit:"pcs"},
+        {id:4,name:"GPS Chartplotter",category:"Navigation",quantity:6,unitPrice:45999,unit:"pcs"},
+        {id:5,name:"Anchor Chain (per m)",category:"Hull",quantity:87,unitPrice:899,unit:"meters"},
+        {id:6,name:"Anti-Fouling Paint 5L",category:"Coating",quantity:14,unitPrice:8999,unit:"liters"},
+        {id:7,name:"LED Navigation Light",category:"Electrical",quantity:33,unitPrice:1599,unit:"sets"},
+        {id:8,name:"Marine Battery",category:"Electrical",quantity:9,unitPrice:12499,unit:"pcs"},
+        {id:9,name:"Fuel Filter",category:"Engine",quantity:64,unitPrice:799,unit:"pcs"}
+    ];
+
+    function showToast(m,t='success'){ let toast=document.getElementById('toast'); toast.textContent=m; toast.className=`toast ${t}`; setTimeout(()=>toast.classList.add('show'),10); setTimeout(()=>toast.classList.remove('show'),3000);}
+    function loadData(){ let si=localStorage.getItem('marine_inventory'); let sb=localStorage.getItem('marine_bills'); inventory=si?JSON.parse(si):JSON.parse(JSON.stringify(sampleInventory)); bills=sb?JSON.parse(sb):[]; if(!si) saveData();}
+    function saveData(){ localStorage.setItem('marine_inventory',JSON.stringify(inventory)); localStorage.setItem('marine_bills',JSON.stringify(bills));}
+
+    function navigateTo(v){
+        document.querySelectorAll('.view').forEach(vw=>vw.classList.add('hidden'));
+        const views=['dashboard','inventory','bill','bills','reports'];
+        document.getElementById(`view-${views[v]}`).classList.remove('hidden');
+        document.querySelectorAll('.nav-tab').forEach((t,i)=>{
+            if(i===v){t.classList.add('text-sky-600','bg-sky-50');t.classList.remove('text-slate-600');}
+            else{t.classList.remove('text-sky-600','bg-sky-50');t.classList.add('text-slate-600');}
+        });
+        for(let i=0;i<=4;i++){
+            let btn=document.getElementById(`mobileTab${i}`);
+            if(btn){if(i===v){btn.classList.add('text-sky-600');btn.classList.remove('text-slate-400');}else{btn.classList.remove('text-sky-600');btn.classList.add('text-slate-400');}}
+        }
+        if(v===0) renderDashboard();
+        if(v===1) renderInventory();
+        if(v===3) renderBills();
+        if(v===4) renderReports();
+        window.scrollTo({top:0});
+    }
+
+    function renderDashboard(){
+        document.getElementById('statTotalParts').innerText=inventory.length;
+        let totalValue=inventory.reduce((s,i)=>s+(i.quantity*i.unitPrice),0);
+        document.getElementById('statStockValue').innerText='₹'+totalValue.toLocaleString('en-IN');
+        document.getElementById('statLowStock').innerText=inventory.filter(i=>i.quantity<LOW_STOCK_THRESHOLD).length;
+        let todayBills=bills.filter(b=>new Date(b.date).toDateString()===new Date().toDateString()).length;
+        document.getElementById('statTodayBills').innerText=todayBills;
+        let recent=document.getElementById('recentBillsList');
+        let emptyRecent=document.getElementById('emptyRecentBills');
+        recent.innerHTML='';
+        if(bills.length===0) emptyRecent.classList.remove('hidden');
+        else{
+            emptyRecent.classList.add('hidden');
+            bills.slice(0,5).forEach(b=>{
+                let r=document.createElement('tr');
+                r.className='hover:bg-slate-50 cursor-pointer';
+                r.innerHTML=`<td class="py-3 font-mono text-sky-600 text-sm">#${b.id}</td><td class="py-3 font-medium text-sm">${escapeHtml(b.customer)}</td><td class="py-3 hidden sm:table-cell text-sm">${new Date(b.date).toLocaleDateString()}</td><td class="py-3 text-right font-bold text-sm">₹${b.total.toLocaleString('en-IN')}</td>`;
+                r.onclick=()=>showBillDetail(b.id);
+                recent.appendChild(r);
+            });
+        }
+        let lowDiv=document.getElementById('lowStockList');
+        let emptyLow=document.getElementById('emptyLowStock');
+        lowDiv.innerHTML='';
+        let lowItems=inventory.filter(i=>i.quantity<LOW_STOCK_THRESHOLD).slice(0,5);
+        if(lowItems.length===0) emptyLow.classList.remove('hidden');
+        else{
+            emptyLow.classList.add('hidden');
+            lowItems.forEach(i=>{
+                let d=document.createElement('div');
+                d.className='flex justify-between bg-amber-50 p-3 rounded-xl';
+                d.innerHTML=`<div><i class="fas fa-exclamation text-amber-600 mr-2"></i>${escapeHtml(i.name)}</div><span class="font-bold text-amber-700">${i.quantity}</span>`;
+                lowDiv.appendChild(d);
+            });
+        }
+    }
+
+    function renderInventory(){
+        let tbody=document.getElementById('inventoryList');
+        let empty=document.getElementById('emptyInventory');
+        tbody.innerHTML='';
+        if(inventory.length===0){empty.classList.remove('hidden');return;}
+        empty.classList.add('hidden');
+        inventory.forEach(i=>{
+            let row=document.createElement('tr');
+            row.className='hover:bg-slate-50';
+            row.innerHTML=`<td class="pl-6 py-4"><div class="font-medium text-sm">${escapeHtml(i.name)}</div><div class="text-xs text-slate-400">ID: ${i.id}</div></td><td class="py-4"><span class="px-2.5 py-1 rounded-full text-xs bg-slate-100">${i.category}</span></td><td class="py-4 text-center"><span class="font-semibold text-sm ${i.quantity<LOW_STOCK_THRESHOLD?'text-amber-600':'text-emerald-600'}">${i.quantity} ${i.unit}</span></td><td class="py-4 text-right text-sm">₹${i.unitPrice.toLocaleString('en-IN')}</td><td class="pr-6 py-4 text-right"><button onclick="editItem(${i.id})" class="w-8 h-8 rounded-lg hover:bg-sky-50 text-sky-500"><i class="fas fa-edit"></i></button> <button onclick="deleteItem(${i.id})" class="w-8 h-8 rounded-lg hover:bg-red-50 text-red-400"><i class="fas fa-trash-alt"></i></button></td>`;
+            tbody.appendChild(row);
+        });
+    }
+
+    function filterInventory(){
+        let term=document.getElementById('searchInventory').value.toLowerCase();
+        let cat=document.getElementById('categoryFilter').value;
+        let filtered=inventory.filter(i=>(!term||i.name.toLowerCase().includes(term))&&(!cat||i.category===cat));
+        let tbody=document.getElementById('inventoryList');
+        let empty=document.getElementById('emptyInventory');
+        tbody.innerHTML='';
+        if(filtered.length===0){empty.classList.remove('hidden');return;}
+        empty.classList.add('hidden');
+        filtered.forEach(i=>{
+            let row=document.createElement('tr');
+            row.innerHTML=`<td class="pl-6 py-4"><div class="font-medium text-sm">${escapeHtml(i.name)}</div></td><td class="py-4"><span class="px-2.5 py-1 rounded-full text-xs bg-slate-100">${i.category}</span></td><td class="py-4 text-center"><span class="font-semibold text-sm">${i.quantity} ${i.unit}</span></td><td class="py-4 text-right text-sm">₹${i.unitPrice.toLocaleString('en-IN')}</td><td class="pr-6 py-4 text-right"><button onclick="editItem(${i.id})" class="text-sky-500 w-8 h-8"><i class="fas fa-edit"></i></button> <button onclick="deleteItem(${i.id})" class="text-red-400 w-8 h-8"><i class="fas fa-trash-alt"></i></button></td>`;
+            tbody.appendChild(row);
+        });
+    }
+
+    function showAddItemModal(){ currentEditId=null; document.getElementById('modalTitle').innerText='Add New Part'; document.getElementById('itemName').value=''; document.getElementById('itemPrice').value=''; document.getElementById('itemQuantity').value=''; document.getElementById('itemUnit').value='pcs'; openModal('itemModal');}
+    function editItem(id){ let item=inventory.find(i=>i.id===id); if(!item) return; currentEditId=id; document.getElementById('modalTitle').innerText='Edit Part'; document.getElementById('itemName').value=item.name; document.getElementById('itemCategory').value=item.category; document.getElementById('itemPrice').value=item.unitPrice; document.getElementById('itemQuantity').value=item.quantity; document.getElementById('itemUnit').value=item.unit; openModal('itemModal');}
+    function saveItem(){ let name=document.getElementById('itemName').value.trim(); let price=parseFloat(document.getElementById('itemPrice').value); let qty=parseInt(document.getElementById('itemQuantity').value); let category=document.getElementById('itemCategory').value; let unit=document.getElementById('itemUnit').value; if(!name||isNaN(price)||isNaN(qty)){showToast('Please fill all fields','error');return;} if(currentEditId){let item=inventory.find(i=>i.id===currentEditId); if(item){item.name=name;item.category=category;item.unitPrice=price;item.quantity=qty;item.unit=unit;showToast('Updated');}} else{let newId=Math.max(...inventory.map(i=>i.id),0)+1; inventory.unshift({id:newId,name,category,quantity:qty,unitPrice:price,unit}); showToast('Part added');} saveData(); closeItemModal(); renderInventory();}
+    function deleteItem(id){ if(confirm('Delete permanently?')){ inventory=inventory.filter(i=>i.id!==id); saveData(); renderInventory(); showToast('Deleted','warning');}}
+
+    function searchItemsForBill(e){ let term=e.target.value.toLowerCase(); let container=document.getElementById('suggestedItems'); container.innerHTML=''; if(!term) return; let matches=inventory.filter(i=>i.name.toLowerCase().includes(term)&&i.quantity>0).slice(0,5); matches.forEach(item=>{ let btn=document.createElement('button'); btn.className='bg-white border px-4 py-2 rounded-xl text-sm shadow-sm'; btn.innerHTML=`${escapeHtml(item.name)} ₹${item.unitPrice.toLocaleString('en-IN')}`; btn.onclick=()=>{addToCart(item);document.getElementById('itemSearch').value='';container.innerHTML='';}; container.appendChild(btn);});}
+    function addSelectedItemToBill(){ let term=document.getElementById('itemSearch').value.trim().toLowerCase(); let found=inventory.find(i=>i.name.toLowerCase()===term||i.name.toLowerCase().includes(term)); if(found&&found.quantity>0){addToCart(found);document.getElementById('itemSearch').value='';document.getElementById('suggestedItems').innerHTML='';}else showToast('Part not found or out of stock','error');}
+    function addToCart(item){ let existing=cart.find(c=>c.id===item.id); if(existing){if(existing.qty>=item.quantity){showToast('Not enough stock','warning');return;}existing.qty++;}else cart.push({id:item.id,name:item.name,unitPrice:item.unitPrice,qty:1,maxQty:item.quantity}); renderCart();}
+
+    function renderCart(){
+        let tbody=document.getElementById('cartItems');
+        let empty=document.getElementById('emptyCart');
+        tbody.innerHTML='';
+        let subtotal=0;
+        if(cart.length===0){empty.classList.remove('hidden');document.getElementById('billTotal').innerText='₹0';return;}
+        empty.classList.add('hidden');
+        cart.forEach((item,idx)=>{
+            let sub=item.qty*item.unitPrice;
+            subtotal+=sub;
+            let row=document.createElement('tr');
+            row.innerHTML=`<td class="py-3 font-medium text-sm">${escapeHtml(item.name)}</td><td class="py-3"><div class="inline-flex border rounded-lg"><button onclick="changeQty(${idx},-1)" class="w-8 h-8 text-center">-</button><span class="w-10 text-center text-sm leading-8">${item.qty}</span><button onclick="changeQty(${idx},1)" class="w-8 h-8 text-center">+</button></div></td><td class="py-3 text-right text-sm text-slate-500">₹${item.unitPrice.toLocaleString('en-IN')}</td><td class="py-3 text-right font-bold text-sm">₹${sub.toLocaleString('en-IN')}</td><td class="py-3 text-right"><button onclick="removeFromCart(${idx})" class="text-red-400 w-8 h-8"><i class="fas fa-times"></i></button></td>`;
+            tbody.appendChild(row);
+        });
+        let gst=Math.round(subtotal*0.18);
+        let grand=subtotal+gst;
+        document.getElementById('billTotal').innerText='₹'+grand.toLocaleString('en-IN');
+        updateLowStockSidebar();
+    }
+
+    function changeQty(idx,delta){ let item=cart[idx]; let newQty=item.qty+delta; if(newQty<1){removeFromCart(idx);return;} if(newQty>item.maxQty){showToast('Max stock reached','warning');return;} item.qty=newQty; renderCart();}
+    function removeFromCart(idx){ cart.splice(idx,1); renderCart();}
+    function clearBill(){ if(cart.length&&confirm('Clear all?')){cart=[];document.getElementById('billCustomer').value='';renderCart();showToast('Cleared','warning');}}
+
+    // ── FIX: Check ALL items for stock sufficiency FIRST, then deduct.
+    //    Old code deducted stock from some items even when others lacked stock.
+    function saveBill(){
+        if(cart.length===0){showToast('Add items first','error');return;}
+        let customer=document.getElementById('billCustomer').value.trim()||'Walk-in Customer';
+
+        // 1. Verify all stock upfront
+        let stockError=cart.some(ci=>{
+            let s=inventory.find(i=>i.id===ci.id);
+            return !s||s.quantity<ci.qty;
+        });
+        if(stockError){showToast('Insufficient stock for one or more items','error');return;}
+
+        let subtotal=cart.reduce((s,i)=>s+(i.qty*i.unitPrice),0);
+        let gst=Math.round(subtotal*0.18);
+        let total=subtotal+gst;
+
+        let newBill={
+            id:`INV${Date.now().toString().slice(-6)}${Math.floor(Math.random()*1000)}`,
+            date:new Date().toISOString(),
+            customer,
+            items:JSON.parse(JSON.stringify(cart)),
+            subtotal,
+            gst,
+            total   // grand total with GST
+        };
+
+        // 2. Safe to deduct now
+        cart.forEach(ci=>{
+            let s=inventory.find(i=>i.id===ci.id);
+            if(s) s.quantity-=ci.qty;
+        });
+
+        bills.unshift(newBill);
+        saveData();
+        showToast(`Bill ${newBill.id} saved`);
+        cart=[];
+        document.getElementById('billCustomer').value='';
+        renderCart();
+        navigateTo(3);
+        setTimeout(()=>showBillDetail(newBill.id),300);
+    }
+
+    function renderBills(){
+        let tbody=document.getElementById('billsList');
+        let empty=document.getElementById('emptyBills');
+        document.getElementById('billsCount').innerText=`${bills.length} invoice${bills.length!==1?'s':''}`;
+        tbody.innerHTML='';
+        if(bills.length===0){empty.classList.remove('hidden');return;}
+        empty.classList.add('hidden');
+        bills.forEach(b=>{
+            let row=document.createElement('tr');
+            row.className='hover:bg-slate-50 cursor-pointer';
+            row.innerHTML=`<td class="pl-6 py-4 font-mono text-sky-600 text-sm">#${b.id}</td><td class="py-4 font-medium text-sm">${escapeHtml(b.customer)}</td><td class="py-4 hidden sm:table-cell text-sm">${new Date(b.date).toLocaleDateString()}</td><td class="pr-6 py-4 text-right font-bold text-sm">₹${b.total.toLocaleString('en-IN')}</td>`;
+            row.onclick=()=>showBillDetail(b.id);
+            tbody.appendChild(row);
+        });
+    }
+
+    function showBillDetail(id){
+        let bill=bills.find(b=>b.id===id);
+        if(!bill) return;
+        currentBillId=id;
+
+        // Handle legacy bills that may not have subtotal/gst stored
+        let subtotal=bill.subtotal||bill.total;
+        let gst=bill.gst||(bill.subtotal?Math.round(bill.subtotal*0.18):0);
+        let grand=bill.total;
+
+        let itemsHtml=bill.items.map(i=>`
+            <tr>
+                <td style="padding:10px 14px; font-size:13px;">${escapeHtml(i.name)}</td>
+                <td style="padding:10px 14px; text-align:center; font-size:13px;">${i.qty}</td>
+                <td style="padding:10px 14px; text-align:right; font-size:13px; color:#64748b;">₹${i.unitPrice.toLocaleString('en-IN')}</td>
+                <td style="padding:10px 14px; text-align:right; font-size:13px; font-weight:600;">₹${(i.qty*i.unitPrice).toLocaleString('en-IN')}</td>
+            </tr>`).join('');
+
+        let content=buildInvoiceHtml(bill, subtotal, gst, grand, itemsHtml, false);
+        document.getElementById('billDetailContent').innerHTML=`<div class="inv-wrap">${content}</div>`;
+        openModal('billDetailModal');
+    }
+
+    // ── Shared invoice HTML builder (used by modal preview & print)
+    function buildInvoiceHtml(bill, subtotal, gst, grand, itemsHtml, forPrint){
+        let cgst=Math.round(gst/2);
+        let sgst=gst-cgst;
+        return `
+            <div class="inv-header">
+                <div>
+                    <div class="inv-logo-row">
+                        <div class="inv-logo-icon"><i class="fas fa-anchor"></i></div>
+                        <div>
+                            <div class="inv-company-name">MARINEMATE</div>
+                            <div class="inv-company-sub">Marine Parts & Services</div>
+                        </div>
+                    </div>
+                    <div class="inv-company-addr" style="margin-top:10px;">
+                        123 Harbor Street, Kochi – 682 001, Kerala<br>
+                        GSTIN: 32AABCU9603R1ZX &nbsp;|&nbsp; Ph: +91 98765 43210
+                    </div>
+                    <div class="inv-gst-badge"><i class="fas fa-check-circle"></i> GST Registered</div>
+                </div>
+                <div class="inv-meta-right">
+                    <div class="inv-title-badge">TAX INVOICE</div>
+                    <div class="inv-num">#${bill.id}</div>
+                    <div class="inv-date">
+                        <strong>Date:</strong> ${new Date(bill.date).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'})}<br>
+                        <strong>Time:</strong> ${new Date(bill.date).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'})}
+                    </div>
+                </div>
+            </div>
+
+            <div class="inv-bill-row">
+                <div class="inv-bill-box">
+                    <div class="inv-bill-box-label">Billed To</div>
+                    <div class="inv-bill-box-val">${escapeHtml(bill.customer)}</div>
+                </div>
+                <div class="inv-bill-box" style="text-align:right; flex:0 0 auto; min-width:120px;">
+                    <div class="inv-bill-box-label">Total Items</div>
+                    <div class="inv-bill-box-val">${bill.items.reduce((s,i)=>s+i.qty,0)} pcs</div>
+                </div>
+            </div>
+
+            <table class="inv-table">
+                <thead>
+                    <tr>
+                        <th style="width:40%; border-radius:8px 0 0 8px; padding-left:16px;">Description</th>
+                        <th style="width:12%;">Qty</th>
+                        <th style="width:22%;">Unit Price</th>
+                        <th style="width:26%; border-radius:0 8px 8px 0; text-align:right; padding-right:16px;">Amount</th>
+                    </tr>
+                </thead>
+                <tbody>${itemsHtml}</tbody>
+            </table>
+
+            <div style="display:flex; justify-content:flex-end;">
+                <div class="inv-totals">
+                    <div class="inv-totals-row"><span style="color:#64748b;">Subtotal</span><span>₹${subtotal.toLocaleString('en-IN')}</span></div>
+                    <div class="inv-totals-row"><span style="color:#64748b;">CGST @ 9%</span><span>₹${cgst.toLocaleString('en-IN')}</span></div>
+                    <div class="inv-totals-row"><span style="color:#64748b;">SGST @ 9%</span><span>₹${sgst.toLocaleString('en-IN')}</span></div>
+                    <div class="inv-totals-row grand"><span>Grand Total</span><span style="color:#0ea5e9;">₹${grand.toLocaleString('en-IN')}</span></div>
+                    <div class="inv-tax-note">*All amounts in Indian Rupees (₹)</div>
+                </div>
+            </div>
+
+            <div class="inv-footer">
+                <div class="inv-footer-note">
+                    <strong>Terms & Conditions:</strong><br>
+                    • Goods once sold will not be taken back<br>
+                    • Subject to Kochi jurisdiction<br>
+                    • E. &amp; O.E.
+                </div>
+                <div style="text-align:right;">
+                    <div class="inv-footer-thank">Thank you! ⚓</div>
+                    <div style="font-size:11px; color:#94a3b8; margin-top:4px;">For any queries: support@marinemate.in</div>
+                    <div style="margin-top:20px; border-top:1px solid #e2e8f0; padding-top:8px; font-size:11px; color:#94a3b8;">Authorised Signatory</div>
+                </div>
+            </div>`;
+    }
+
+    function printInvoice(){
+        if(!currentBillId) return;
+        let bill=bills.find(b=>b.id===currentBillId);
+        if(!bill) return;
+
+        let subtotal=bill.subtotal||bill.total;
+        let gst=bill.gst||(bill.subtotal?Math.round(bill.subtotal*0.18):0);
+        let grand=bill.total;
+
+        let itemsHtml=bill.items.map(i=>`
+            <tr>
+                <td style="padding:10px 14px; font-size:13px;">${escapeHtml(i.name)}</td>
+                <td style="padding:10px 14px; text-align:center; font-size:13px;">${i.qty}</td>
+                <td style="padding:10px 14px; text-align:right; font-size:13px; color:#64748b;">₹${i.unitPrice.toLocaleString('en-IN')}</td>
+                <td style="padding:10px 14px; text-align:right; font-size:13px; font-weight:600;">₹${(i.qty*i.unitPrice).toLocaleString('en-IN')}</td>
+            </tr>`).join('');
+
+        let printContainer=document.getElementById('printInvoiceContainer');
+        printContainer.style.display='block';
+
+        // Link the Google Font for print
+        let fontLink=document.createElement('link');
+        fontLink.rel='stylesheet';
+        fontLink.href='https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap';
+        printContainer.innerHTML='';
+        printContainer.appendChild(fontLink);
+
+        let wrapper=document.createElement('div');
+        wrapper.className='inv-wrap';
+        wrapper.innerHTML=buildInvoiceHtml(bill,subtotal,gst,grand,itemsHtml,true);
+        printContainer.appendChild(wrapper);
+
+        // Small delay to allow font load
+        setTimeout(()=>{
+            window.print();
+            setTimeout(()=>{
+                printContainer.style.display='none';
+                printContainer.innerHTML='';
+            },1000);
+        },300);
+    }
+
+    function updateLowStockSidebar(){ let c=document.getElementById('lowStockSidebar'); if(!c) return; c.innerHTML=''; let low=inventory.filter(i=>i.quantity<LOW_STOCK_THRESHOLD); if(low.length===0){c.innerHTML='<div class="text-emerald-600"><i class="fas fa-check-circle"></i> All good</div>';return;} low.forEach(i=>{c.innerHTML+=`<div class="flex justify-between bg-amber-50 p-2 rounded"><span class="text-sm">${escapeHtml(i.name)}</span><span class="font-bold text-sm">${i.quantity}</span></div>`;});}
+
+    function renderReports(){
+        let topDiv=document.getElementById('topSellingList'); let emptyTop=document.getElementById('emptyTopSelling'); topDiv.innerHTML='';
+        let sales={}; bills.forEach(b=>{b.items.forEach(it=>{if(!sales[it.id]) sales[it.id]={name:it.name,totalSold:0,revenue:0}; sales[it.id].totalSold+=it.qty; sales[it.id].revenue+=it.qty*it.unitPrice;});});
+        let top=Object.values(sales).sort((a,b)=>b.revenue-a.revenue).slice(0,5);
+        if(top.length===0) emptyTop.classList.remove('hidden');
+        else{emptyTop.classList.add('hidden'); top.forEach((t,idx)=>{topDiv.innerHTML+=`<div class="flex gap-3 p-3 bg-slate-50 rounded-xl items-center"><div class="w-8 h-8 bg-amber-100 rounded-lg flex items-center justify-center font-bold text-sm">${idx+1}</div><div class="flex-1 min-w-0"><p class="font-medium text-sm truncate">${escapeHtml(t.name)}</p><p class="text-xs text-slate-500">${t.totalSold} sold</p></div><div class="font-bold text-sm">₹${t.revenue.toLocaleString('en-IN')}</div></div>`;});}
+        let catGrid=document.getElementById('categoryValueGrid'); catGrid.innerHTML='';
+        let catVal={}; inventory.forEach(i=>{catVal[i.category]=(catVal[i.category]||0)+(i.quantity*i.unitPrice);});
+        let totalAll=Object.values(catVal).reduce((a,b)=>a+b,0);
+        Object.entries(catVal).forEach(([cat,val])=>{let percent=totalAll?Math.round((val/totalAll)*100):0; catGrid.innerHTML+=`<div class="p-3 bg-slate-50 rounded-xl"><div class="flex justify-between text-sm"><span>${cat}</span><span>${percent}%</span></div><div class="h-2 bg-slate-200 rounded-full mt-1"><div class="h-full bg-sky-500 rounded-full transition-all" style="width:${percent}%"></div></div><div class="text-xs mt-1 text-slate-500">₹${val.toLocaleString('en-IN')}</div></div>`;});
+    }
+
+    function exportData(){ let csv="ID,Name,Category,Stock,Price,Unit\n"+inventory.map(i=>`${i.id},"${i.name}",${i.category},${i.quantity},${i.unitPrice},${i.unit}`).join("\n")+"\n\nBILLS\nID,Customer,Date,Subtotal,GST,Total\n"+bills.map(b=>`${b.id},"${b.customer}",${b.date},${b.subtotal||b.total},${b.gst||0},${b.total}`).join("\n"); let blob=new Blob([csv],{type:'text/csv'}); let a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=`marinemate_${new Date().toISOString().split('T')[0]}.csv`; a.click(); showToast('Exported CSV');}
+    function resetAllData(){ if(confirm('⚠️ Reset all data? This cannot be undone.')){localStorage.removeItem('marine_inventory');localStorage.removeItem('marine_bills');inventory=JSON.parse(JSON.stringify(sampleInventory));bills=[];cart=[];saveData();closeSettings();navigateTo(0);showToast('Data reset','warning');}}
+
+    // ── FIX: Unified openModal / closeModal
+    //    - Bottom sheet modals (items-end): slide translate-y
+    //    - Center modals: scale + opacity
+    //    - FIX: Save scrollY before locking body to prevent scroll-jump on mobile
+    let _savedScrollY=0;
+    function openModal(id){
+        let modal=document.getElementById(id);
+        let backdrop=document.getElementById(id+'Backdrop');
+        let panel=document.getElementById(id+'Panel');
+
+        // Save scroll position and lock body WITHOUT position:fixed (avoids scroll jump)
+        _savedScrollY=window.scrollY;
+        document.body.classList.add('modal-open');
+
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+
+        if(backdrop) setTimeout(()=>backdrop.classList.remove('opacity-0'),10);
+
+        if(panel){
+            let isBottomSheet=modal.classList.contains('items-end');
+            if(isBottomSheet){
+                // slide up from bottom
+                setTimeout(()=>{panel.classList.remove('translate-y-full');panel.classList.add('translate-y-0');},10);
+            } else {
+                // scale in from center
+                setTimeout(()=>{panel.classList.remove('scale-95','opacity-0');panel.classList.add('scale-100','opacity-100');},10);
+            }
+        }
+    }
+
+    function closeModal(id){
+        let modal=document.getElementById(id);
+        let backdrop=document.getElementById(id+'Backdrop');
+        let panel=document.getElementById(id+'Panel');
+
+        if(backdrop) backdrop.classList.add('opacity-0');
+
+        if(panel){
+            let isBottomSheet=modal.classList.contains('items-end');
+            if(isBottomSheet){
+                panel.classList.remove('translate-y-0');
+                panel.classList.add('translate-y-full');
+            } else {
+                panel.classList.remove('scale-100','opacity-100');
+                panel.classList.add('scale-95','opacity-0');
+            }
+        }
+
+        setTimeout(()=>{
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+            document.body.classList.remove('modal-open');
+            // Restore scroll position after unlocking body
+            window.scrollTo(0,_savedScrollY);
+        },300);
+    }
+
+    function closeItemModal(){ closeModal('itemModal'); currentEditId=null;}
+    function closeBillDetail(){ closeModal('billDetailModal'); currentBillId=null;}
+    function showSettings(){ openModal('settingsModal');}
+    function closeSettings(){ closeModal('settingsModal');}
+
+    function toggleMobileMenu(){
+        let menu=document.getElementById('mobileMenu');
+        let backdrop=document.getElementById('mobileMenuBackdrop');
+        let panel=document.getElementById('mobileMenuPanel');
+        if(menu.classList.contains('hidden')){
+            menu.classList.remove('hidden');
+            setTimeout(()=>{backdrop.classList.remove('opacity-0');panel.classList.remove('translate-x-full');},10);
+        } else {
+            backdrop.classList.add('opacity-0');
+            panel.classList.add('translate-x-full');
+            setTimeout(()=>menu.classList.add('hidden'),300);
+        }
+    }
+
+    function escapeHtml(str){ let div=document.createElement('div'); div.textContent=str; return div.innerHTML;}
+
+    document.addEventListener('DOMContentLoaded',()=>{
+        loadData();
+        navigateTo(0);
+        if('serviceWorker' in navigator){ try{ navigator.serviceWorker.register('/sw.js').catch(()=>{}); } catch(e){}}
+    });
+
+    // PWA manifest
+    (function setupPWA(){
+        let manifestObj={name:"MarineMate",short_name:"MarineMate",start_url:".",display:"standalone",theme_color:"#0ea5e9",background_color:"#f0f9ff",icons:[{src:"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%230ea5e9'/%3E%3Ctext x='50' y='67' font-size='50' text-anchor='middle' fill='white'%3E⚓%3C/text%3E%3C/svg%3E",sizes:"any",type:"image/svg+xml"}]};
+        let manifestBlob=new Blob([JSON.stringify(manifestObj)],{type:'application/json'});
+        document.querySelector('link[rel="manifest"]').setAttribute('href',URL.createObjectURL(manifestBlob));
+    })();
+</script>
+</body>
+</html>
