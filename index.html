@@ -11,6 +11,7 @@
      <link rel="manifest" href="/manifest.json">
     <title>MarineMate • Inventory & Billing</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=DM+Serif+Display&display=swap');
@@ -429,7 +430,14 @@
             <div class="p-4 border-b flex justify-between items-center flex-shrink-0">
                 <h3 class="font-bold">Invoice Details</h3>
                 <div>
-                    <button onclick="printInvoice()" class="px-4 py-2 bg-slate-800 text-white rounded-lg mr-2 text-sm"><i class="fas fa-print mr-1"></i>Print</button>
+                    <button onclick="downloadInvoicePDF()" class="px-4 py-2 bg-emerald-600 text-white rounded-lg mr-2 text-sm">
+    <i class="fas fa-file-pdf mr-1"></i>PDF
+</button>
+
+<button onclick="shareOnWhatsApp()" class="px-4 py-2 bg-green-500 text-white rounded-lg text-sm">
+    <i class="fab fa-whatsapp mr-1"></i>WhatsApp
+</button>
+                    <!-- <button onclick="printInvoice()" class="px-4 py-2 bg-slate-800 text-white rounded-lg mr-2 text-sm"><i class="fas fa-print mr-1"></i>Print</button> -->
                     <button onclick="closeBillDetail()" class="w-10 h-10 rounded-full bg-slate-100"><i class="fas fa-times"></i></button>
                 </div>
             </div>
@@ -885,6 +893,8 @@ setTimeout(() => {
         }
     }
 
+    
+
     function escapeHtml(str){ let div=document.createElement('div'); div.textContent=str; return div.innerHTML;}
 
     document.addEventListener('DOMContentLoaded',()=>{
@@ -899,6 +909,58 @@ setTimeout(() => {
         let manifestBlob=new Blob([JSON.stringify(manifestObj)],{type:'application/json'});
         document.querySelector('link[rel="manifest"]').setAttribute('href',URL.createObjectURL(manifestBlob));
     })();
+
+
+    function downloadInvoicePDF() {
+    if (!currentBillId) return;
+
+    const bill = bills.find(b => b.id === currentBillId);
+    if (!bill) return;
+
+    let subtotal = bill.subtotal || bill.total;
+    let gst = bill.gst || 0;
+    let grand = bill.total;
+
+    let itemsHtml = bill.items.map(i => `
+        <tr>
+            <td>${i.name}</td>
+            <td>${i.qty}</td>
+            <td>₹${i.unitPrice}</td>
+            <td>₹${i.qty * i.unitPrice}</td>
+        </tr>
+    `).join('');
+
+    let container = document.createElement('div');
+    container.className = 'inv-wrap';
+    container.innerHTML = buildInvoiceHtml(bill, subtotal, gst, grand, itemsHtml, true);
+
+    const opt = {
+        margin: 0,
+        filename: `Invoice_${bill.id}.pdf`,
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { scale: 2 },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+    };
+
+    html2pdf().set(opt).from(container).save();
+}
+
+
+function shareOnWhatsApp() {
+    if (!currentBillId) return;
+
+    const bill = bills.find(b => b.id === currentBillId);
+    if (!bill) return;
+
+    let message = `🧾 Invoice ${bill.id}
+Customer: ${bill.customer}
+Amount: ₹${bill.total}
+
+Thank you! ⚓`;
+
+    let url = `https://wa.me/?text=${encodeURIComponent(message)}`;
+    window.open(url, '_blank');
+}
 </script>
 </body>
 </html>
