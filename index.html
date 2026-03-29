@@ -875,7 +875,7 @@
     document.addEventListener('DOMContentLoaded',()=>{
         loadData();
         navigateTo(0);
-        if('serviceWorker' in navigator){ try{ navigator.serviceWorker.register('/sw.js').catch(()=>{}); } catch(e){}}
+        if('serviceWorker' in navigator){ try{ navigator.serviceWorker.register('./sw.js').catch(()=>{}); } catch(e){}}
     });
 
     // PWA manifest
