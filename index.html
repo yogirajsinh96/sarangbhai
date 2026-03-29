@@ -73,20 +73,31 @@
         /* ══════════════════════════════════════════════
            PROFESSIONAL PRINT INVOICE
            ══════════════════════════════════════════════ */
-        @media print {
-            body * { visibility: hidden !important; }
-            #printInvoiceContainer,
-            #printInvoiceContainer * { visibility: visible !important; }
-            #printInvoiceContainer {
-                position: fixed !important;
-                inset: 0 !important;
-                background: #fff !important;
-                z-index: 99999 !important;
-                overflow: auto !important;
-                padding: 0 !important;
-            }
-            @page { size: A4; margin: 0; }
-        }
+@media print {
+
+    body {
+        margin: 0;
+        padding: 0;
+    }
+
+    /* ✅ Hide everything except print container */
+    body > *:not(#printInvoiceContainer) {
+        display: none !important;
+    }
+
+    #printInvoiceContainer {
+        display: block !important;
+        position: static !important;   /* 🔥 FIX */
+        width: 100%;
+        background: #fff;
+        overflow: visible !important;  /* 🔥 FIX */
+    }
+
+    @page {
+        size: A4;
+        margin: 10mm;
+    }
+}
 
         /* Invoice styles (used both in modal preview & print) */
         .inv-wrap {
@@ -767,13 +778,17 @@
         printContainer.appendChild(wrapper);
 
         // Small delay to allow font load
-        setTimeout(()=>{
-            window.print();
-            setTimeout(()=>{
-                printContainer.style.display='none';
-                printContainer.innerHTML='';
-            },1000);
-        },300);
+printContainer.offsetHeight;
+
+setTimeout(() => {
+    window.print();
+
+    setTimeout(() => {
+        printContainer.style.display = 'none';
+        printContainer.innerHTML = '';
+    }, 1000);
+
+}, 800); // 🔥 increase delay
     }
 
     function updateLowStockSidebar(){ let c=document.getElementById('lowStockSidebar'); if(!c) return; c.innerHTML=''; let low=inventory.filter(i=>i.quantity<LOW_STOCK_THRESHOLD); if(low.length===0){c.innerHTML='<div class="text-emerald-600"><i class="fas fa-check-circle"></i> All good</div>';return;} low.forEach(i=>{c.innerHTML+=`<div class="flex justify-between bg-amber-50 p-2 rounded"><span class="text-sm">${escapeHtml(i.name)}</span><span class="font-bold text-sm">${i.quantity}</span></div>`;});}
